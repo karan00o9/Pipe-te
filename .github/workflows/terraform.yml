@@ -1,0 +1,83 @@
+provider "azurerm" {
+  features {}
+}
+
+resource "azurerm_resource_group" "firewall" {
+  name     = "my-firewall-rg"
+  location = "eastus"
+}
+
+resource "azurerm_virtual_network" "firewall" {
+  name                = "my-firewall-vnet"
+  address_space       = ["10.0.0.0/16"]
+  location            = azurerm_resource_group.firewall.location
+  resource_group_name = azurerm_resource_group.firewall.name
+}
+
+resource "azurerm_subnet" "firewall" {
+  name                 = "my-firewall-subnet"
+  resource_group_name  = azurerm_resource_group.firewall.name
+  virtual_network_name = azurerm_virtual_network.firewall.name
+  address_prefixes     = ["10.0.1.0/24"]
+}
+
+resource "azurerm_public_ip" "firewall" {
+  name                = "my-firewall-pip"
+  location            = azurerm_resource_group.firewall.location
+  resource_group_name = azurerm_resource_group.firewall.name
+  allocation_method   = "Static"
+}
+
+resource "azurerm_firewall" "firewall" {
+  name                = "my-firewall"
+  location            = azurerm_resource_group.firewall.location
+  resource_group_name = azurerm_resource_group.firewall.name
+  threat_intel_mode   = "Alert"
+  sku                 = "AZFW_VNet"
+  ip_configuration {
+    name                          = "my-firewall-ip"
+    subnet_id                     = azurerm_subnet.firewall.id
+    public_ip_address_id          = azurerm_public_ip.firewall.id
+    provisioning_state            = "Succeeded"
+  }
+}
+
+resource "azurerm_firewall_network_rule_collection" "allow-http" {
+  name                = "AllowHTTP"
+  resource_group_name = azurerm_resource_group.firewall.name
+  firewall_name       = azurerm_firewall.firewall.name
+
+  rule {
+    name                     = "Allow HTTP traffic"
+    priority                 = 100
+    protocol                 = "TCP"
+    source_addresses         = ["*"]
+    destination_addresses    = ["*"]
+    destination_ports        = ["80"]
+    action                   = "Allow"
+    description              = "Allow HTTP traffic from any source to any destination on port 80."
+    source_ip_groups         = []
+    destination_ip_groups    = []
+    azure_service_tags       = []
+  }
+}
+
+resource "azurerm_firewall_network_rule_collection" "block-ip" {
+  name                = "BlockIP"
+  resource_group_name = azurerm_resource_group.firewall.name
+  firewall_name       = azurerm_firewall.firewall.name
+
+  rule {
+    name                     = "Block IP address"
+    priority                 = 200
+    protocol                 = "Any"
+    source_addresses         = ["10.0.1.1/32"]
+    destination_addresses    = ["*"]
+    destination_ports        = ["*"]
+    action                   = "Deny"
+    description              = "Block traffic from IP address 10.0.1.1."
+    source_ip_groups         = []
+    destination_ip_groups    = []
+    azure_service_tags       = []
+  }
+}
